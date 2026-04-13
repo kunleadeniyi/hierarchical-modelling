@@ -6,37 +6,33 @@ services:
     container_name: postgres_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: devops-sa        # Change to your desired username
-      POSTGRES_PASSWORD: QAZ123_wsx # Change to a strong password
-      POSTGRES_DB: devops      # Initial database name
+      POSTGRES_USER: ${POSTGRES_USER:-devops_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-devops}
     ports:
-      - "5432:5432"                # Host:Container port mapping
+      - "5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER:-postgres}" -d "$${POSTGRES_DB:-postgres}" -h localhost || exit 1' ]
+      test: ["CMD-SHELL", "pg_isready -U \"${POSTGRES_USER:-devops_user}\" -d \"${POSTGRES_DB:-devops}\" -h localhost || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
     stop_grace_period: 120s
     volumes:
-      - ./data:/var/lib/postgresql/data  # Persistent storage
-      # - C:\Users\aadeniyi\Documents\StarRiver\sumo\pythonRefresher\postgres\data:/var/lib/postgresql/data  # Persistent storage
-
-
+      - ./data:/var/lib/postgresql/data
 
   pgadmin:
     image: dpage/pgadmin4:8
     container_name: pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@example.com  # Login email for pgAdmin
-      PGADMIN_DEFAULT_PASSWORD: admin123        # Login password for pgAdmin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
     ports:
-      - "5050:80"                  # Access pgAdmin at http://localhost:5050
+      - "5050:80"
     depends_on:
       - postgres
 
 volumes:
   postgres_data:
     external: true
-
