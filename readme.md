@@ -83,6 +83,12 @@ python3 seed/generate_data.py
 ### 5. Run the pipeline
 
 ```bash
+python3 pipeline/run_all.py
+```
+
+Or run steps individually if you need to re-run a single step:
+
+```bash
 python3 pipeline/00_populate_path_nodes.py      # ~32k path nodes, ~1.4M closure rows
 python3 pipeline/01_ingest_changelists.py        # 111 changelists
 python3 pipeline/02_ingest_issue_instances.py    # ~650 issue instances
