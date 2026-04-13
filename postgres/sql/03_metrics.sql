@@ -1,4 +1,4 @@
--- populate_changelist_metrics.sql
+-- 03_metrics.sql
 SET search_path = issue_tracker;
 
 -- Rebuild (idempotent) metrics per changelist for all projects.

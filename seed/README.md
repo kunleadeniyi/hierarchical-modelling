@@ -29,7 +29,7 @@ issues_raw  (staging table)
 
 - Python 3.10+
 - `pip install pandas sqlalchemy psycopg2-binary` (or `pip install -r requirements.txt` from the project root)
-- Postgres running with the schema already applied (`postgres/scripts/sql/table_creation_v2.sql`)
+- Postgres running with the schema already applied (`postgres/sql/01_schema.sql`)
 - `PG_DSN` environment variable set (see below)
 
 ---
