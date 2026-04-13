@@ -1,42 +1,126 @@
-## Note:
-- Files are either notebooks, python scripts or sql scripts
-- SQL scripts should be run on the database
-- Python scripts can be run anywhere 
-- Notebook will typically require a Jupyter notebook like environment. Most IDE's support it. Notebooks are file that end with the .ipynb extension
+# Hierarchical Issue Tracker — Data Modelling Showcase
 
+Build systems generate thousands of issues per changelist. Tracking which issues are new, which resolved, and rolling up counts through a deep folder hierarchy at query time is expensive. This project models the problem properly: a closure table for instant hierarchy rollups, a snapshot model for point-in-time queries, and pre-computed presence intervals so new/resolved state is a single index scan.
 
-## Tables 
+All data is synthetic. A generator produces realistic fake records; the pipeline ingests them into a normalised Postgres schema. No proprietary data is used.
 
-issues_raw - starting point to derive all other data. Not really part of the model but necessary for the PoC
+---
 
-issue_observation - the observation of the issue as seen in the asset file with some enrichment and reference to other table
+## Architecture
 
-issue_instance - table containing one row per issue instance, using a concat of (issue, asset) as the issue_signature 
+```
+seed/generate_data.py
+        │
+        ▼
+  issues_raw  (staging)
+        │
+        ├── 00_populate_path_nodes.py  ──▶  path_node, path_closure
+        ├── 01_ingest_changelists.py   ──▶  changelist
+        ├── 02_ingest_issue_instances.py ─▶ issue_instance
+        ├── 03_ingest_observations.py  ──▶  snapshot, issue_observation
+        └── 04_build_presence_intervals.py ▶ issue_presence_interval
+```
 
-issue_family - not used, but table present in ddl
+See [docs/architecture.md](docs/architecture.md) for the full ERD and data flow diagram.
 
-path_node - table containing adjacent parent/child relationships only for node (in this case build_machine_path, that is the folder as seen in the shared drive)
+---
 
-path_closure - table contain relation of each node in a path to the parent.
+## Data Model
 
-changelist - should contain one row per CL
+| Table | Purpose |
+|---|---|
+| `project` | One row per project; all other tables FK here |
+| `path_node` | One row per unique path segment (build server, CL folder, team, asset) |
+| `path_closure` | Closure table: every ancestor–descendant pair with distance; enables O(1) hierarchy rollups |
+| `changelist` | One row per CL per project; links to the CL's path_node |
+| `snapshot` | One ingestion run per CL; separates observation time from CL time |
+| `issue_instance` | Deduplicated issue identity, keyed by SHA-256 of normalised text + asset path |
+| `issue_observation` | Fact table: one row per (snapshot, issue, path location) |
+| `issue_presence_interval` | Derived: contiguous runs of CL presence per issue; NULL end = still open |
+| `changelist_metrics` | Pre-aggregated total/new/resolved counts per CL |
 
-changelist_metrics - Rollup/aggregate table showing issue stats per CL
+Key design decisions are documented in [docs/data_model.md](docs/data_model.md).
 
-issue_presence_interval - Rollup/aggregate table showing issue presence per CL
+---
 
-project - should contain one row project, can be used to support projects on a branch level by use the project_id as <project>_<branch>. e.g d5_main
+## Quickstart
 
-snapshot - should contain one row per build run, will contain multiple rows if a CL is built multiple times.
+**Prerequisites:** Docker, Python 3.10+
 
-## Views
-v_treemap_cl_levels8_latest - view for hierarchical reporting, built to support BI Tools like Tableau and Looker
+### 1. Clone and install dependencies
 
+```bash
+git clone <repo-url>
+cd hierarchical-modelling
+pip install -r requirements.txt
+```
 
-## How to use
-1. Ensure all packages are installed -> psycopg2, pandas, sqlalchemy
-2. Run extract_data.ipynb to dump raw data from shared drive to issues folder in the project root directory
-2. Start Postgres server using docker-compose or your existing docker 
-3. Run postgres/scripts/sql/table_creation_v2.sql in postgres database
-4. run explore_and_save_data_to_postgres.ipynb to explore data and save issues_raw and path_node tables to postgres.
-5. Continue with instructions on run order of other scripts in postgres/scripts/readme.md 
+### 2. Start Postgres
+
+```bash
+cd postgres
+cp ../.env.example .env     # edit credentials if desired
+docker compose --env-file ../.env up -d
+cd ..
+```
+
+### 3. Apply the schema
+
+```bash
+export PG_DSN=postgresql://devops_user:changeme@localhost:5432/devops
+psql $PG_DSN -f postgres/sql/01_schema.sql
+```
+
+### 4. Generate synthetic data
+
+```bash
+python3 seed/generate_data.py
+# [proj-alpha] 85 changelists, ~488 issue instances
+# [proj-beta]  26 changelists, ~162 issue instances
+# issues_raw: 22745 rows written
+```
+
+### 5. Run the pipeline
+
+```bash
+python3 pipeline/00_populate_path_nodes.py      # ~32k path nodes, ~1.4M closure rows
+python3 pipeline/01_ingest_changelists.py        # 111 changelists
+python3 pipeline/02_ingest_issue_instances.py    # ~650 issue instances
+python3 pipeline/03_ingest_observations.py       # ~22k observations
+python3 pipeline/04_build_presence_intervals.py  # ~7.6k intervals
+```
+
+### 6. Apply derived SQL
+
+```bash
+psql $PG_DSN -f postgres/sql/03_metrics.sql   # populate changelist_metrics
+psql $PG_DSN -f postgres/sql/04_views.sql     # create BI view
+```
+
+---
+
+## Key Design Decisions
+
+- **Closure table** (`path_closure`): hierarchy rollups are a single join — no recursion at read time. Scales to 8+ levels with millions of rows. [Read more](docs/data_model.md#closure-table-for-path-hierarchy)
+
+- **Snapshot model** (`snapshot`): decouples ingestion time from changelist time. The same CL can be re-ingested without duplicating observations. Enables point-in-time queries. [Read more](docs/data_model.md#snapshot-model)
+
+- **Presence intervals** (`issue_presence_interval`): pre-computing contiguous runs of CL presence makes new/resolved queries a simple range filter instead of a full observation scan. [Read more](docs/data_model.md#presence-intervals-as-a-derived-table)
+
+---
+
+## Query Showcase
+
+Eight queries demonstrating window functions, closure table rollups, point-in-time filtering, and interval analysis: [docs/query_showcase.md](docs/query_showcase.md)
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Database | PostgreSQL 16 |
+| Containerisation | Docker Compose |
+| Pipeline | Python 3.10+, pandas, SQLAlchemy, psycopg2 |
+| Synthetic data | Python (dataclasses, random, hashlib) |
+| Schema | Pure SQL DDL — no ORM migrations |
