@@ -1,6 +1,22 @@
 version: '3.9'
 
+# ─── Profiles ────────────────────────────────────────────────────────────────
+#
+#   (no profile)              postgres only — always starts
+#   --profile pgadmin         + pgAdmin web UI  (use if you have no DB IDE)
+#   --profile dashboard       + Metabase BI dashboard
+#
+# Examples:
+#   docker compose up -d                                  # DB only
+#   docker compose --profile pgadmin up -d               # DB + pgAdmin
+#   docker compose --profile dashboard up -d             # DB + Metabase
+#   docker compose --profile pgadmin --profile dashboard up -d  # everything
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
+
+  # ── Core database (always starts) ──────────────────────────────────────────
   postgres:
     image: postgres:16
     container_name: postgres_db
@@ -21,9 +37,14 @@ services:
     volumes:
       - ./data:/var/lib/postgresql/data
 
+  # ── pgAdmin — profile: pgadmin ─────────────────────────────────────────────
+  # Web-based Postgres GUI. Use this if you don't have a local DB IDE
+  # (DataGrip, DBeaver, TablePlus, etc.).
+  # Access at http://localhost:5050
   pgadmin:
     image: dpage/pgadmin4:8
     container_name: pgadmin
+    profiles: [pgadmin]
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
@@ -33,6 +54,24 @@ services:
     depends_on:
       - postgres
 
+  # ── Metabase — profile: dashboard ─────────────────────────────────────────
+  # BI dashboard. Connect it to postgres_db on first launch (see README).
+  # Access at http://localhost:3000
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase
+    profiles: [dashboard]
+    restart: unless-stopped
+    environment:
+      MB_DB_TYPE: h2                        # embedded H2 for Metabase's own metadata
+      JAVA_TIMEZONE: UTC
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - metabase_data:/metabase-data
+
 volumes:
-  postgres_data:
-    external: true
+  metabase_data:

@@ -60,7 +60,10 @@ pip install -r requirements.txt
 ```bash
 cd postgres
 cp ../.env.example .env     # edit credentials if desired
-docker compose --env-file ../.env up -d
+
+docker compose up -d                          # DB only
+# docker compose --profile pgadmin up -d     # + pgAdmin  (if you have no DB IDE)
+# docker compose --profile dashboard up -d   # + Metabase (see Dashboard section below)
 cd ..
 ```
 
@@ -115,6 +118,33 @@ psql $PG_DSN -f postgres/sql/04_views.sql     # create BI view
 
 ---
 
+## Dashboard (Metabase)
+
+After running the pipeline, you can explore the data visually in Metabase.
+
+```bash
+cd postgres
+docker compose --profile dashboard up -d
+```
+
+Open [http://localhost:3000](http://localhost:3000) and complete the setup wizard:
+
+1. Create an admin account.
+2. On the **Add your data** step, choose **PostgreSQL** and enter:
+   - **Host:** `postgres_db`
+   - **Port:** `5432`
+   - **Database:** `devops` (or your `POSTGRES_DB` value)
+   - **Username / Password:** your `POSTGRES_USER` / `POSTGRES_PASSWORD` values
+   - **Schema:** `issue_tracker`
+3. Click **Connect** — Metabase will scan the schema and all tables become available for querying.
+
+Suggested starting points once connected:
+- **`changelist_metrics`** — new/resolved/total trend per CL (line chart by `cl_number`)
+- **`v_treemap_cl_levels8_latest`** — hierarchical issue breakdown (pivot or treemap by `level_1` → `level_4`)
+- **`issue_presence_interval`** — filter `end_changelist_id IS NULL` to see all currently open issues
+
+---
+
 ## Query Showcase
 
 Eight queries demonstrating window functions, closure table rollups, point-in-time filtering, and interval analysis: [docs/query_showcase.md](docs/query_showcase.md)
@@ -126,7 +156,7 @@ Eight queries demonstrating window functions, closure table rollups, point-in-ti
 | Layer | Technology |
 |---|---|
 | Database | PostgreSQL 16 |
-| Containerisation | Docker Compose |
+| Containerisation | Docker Compose (profiles: `pgadmin`, `dashboard`) |
 | Pipeline | Python 3.10+, pandas, SQLAlchemy, psycopg2 |
 | Synthetic data | Python (dataclasses, random, hashlib) |
 | Schema | Pure SQL DDL — no ORM migrations |
