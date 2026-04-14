@@ -1,5 +1,10 @@
 # Hierarchical Issue Tracker — Data Modelling Showcase
 
+![CI](https://github.com/kunleadeniyi/hierarchical-modelling/actions/workflows/ci.yml/badge.svg)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-required-blue?logo=docker&logoColor=white)
+
 Build systems generate thousands of issues per changelist. Tracking which issues are new, which resolved, and rolling up counts through a deep folder hierarchy at query time is expensive. This project models the problem properly: a closure table for instant hierarchy rollups, a snapshot model for point-in-time queries, and pre-computed presence intervals so new/resolved state is a single index scan.
 
 All data is synthetic. A generator produces realistic fake records; the pipeline ingests them into a normalised Postgres schema. No proprietary data is used.
@@ -118,6 +123,23 @@ psql $PG_DSN -f postgres/sql/04_views.sql     # create BI view
 
 ---
 
+## Dashboard (Streamlit)
+
+```bash
+export PG_DSN=postgresql://devops_user:changeme@localhost:5432/devops
+streamlit run dashboard/app.py
+```
+
+Opens at [http://localhost:8501](http://localhost:8501). Three pages:
+
+| Page | Content |
+|---|---|
+| **Overview** | KPI cards, new/resolved/total trend per CL, running open count, issue type breakdown |
+| **Hierarchy** | Animated treemap/icicle/sunburst that steps through CL numbers; team × CL heatmap; static snapshot at a chosen CL |
+| **Lifecycle** | Presence interval Gantt (one bar per interval, gaps = reappearances); recurring issues chart |
+
+---
+
 ## Dashboard (Metabase)
 
 After running the pipeline, you can explore the data visually in Metabase.
@@ -158,5 +180,6 @@ Eight queries demonstrating window functions, closure table rollups, point-in-ti
 | Database | PostgreSQL 16 |
 | Containerisation | Docker Compose (profiles: `pgadmin`, `dashboard`) |
 | Pipeline | Python 3.10+, pandas, SQLAlchemy, psycopg2 |
+| Dashboard | Streamlit, Plotly |
 | Synthetic data | Python (dataclasses, random, hashlib) |
 | Schema | Pure SQL DDL — no ORM migrations |

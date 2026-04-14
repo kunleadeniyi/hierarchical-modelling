@@ -1,0 +1,101 @@
+name: Pipeline CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pipeline:
+    name: Seed → Ingest → Validate
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: devops_user
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: devops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U devops_user -d devops"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PG_DSN: postgresql://devops_user:changeme@localhost:5432/devops
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── Schema ────────────────────────────────────────────────────────────────
+      - name: Apply schema
+        run: psql $PG_DSN -f postgres/sql/01_schema.sql
+
+      # ── Seed ──────────────────────────────────────────────────────────────────
+      - name: Generate synthetic data
+        run: python seed/generate_data.py --seed 42
+
+      - name: Verify issues_raw populated
+        run: |
+          COUNT=$(psql $PG_DSN -t -c "SELECT COUNT(*) FROM issue_tracker.issues_raw;")
+          echo "issues_raw rows: $COUNT"
+          [ "$COUNT" -gt 0 ] || (echo "FAIL: issues_raw is empty" && exit 1)
+
+      # ── Pipeline ──────────────────────────────────────────────────────────────
+      - name: Run pipeline (steps 00–04)
+        run: python pipeline/run_all.py
+
+      # ── Derived SQL ───────────────────────────────────────────────────────────
+      - name: Populate changelist_metrics
+        run: psql $PG_DSN -f postgres/sql/03_metrics.sql
+
+      - name: Create BI views
+        run: psql $PG_DSN -f postgres/sql/04_views.sql
+
+      # ── Row-count validation ──────────────────────────────────────────────────
+      - name: Validate row counts
+        run: |
+          fail=0
+
+          check() {
+            local label="$1"
+            local query="$2"
+            local count
+            count=$(psql $PG_DSN -t -c "$query" | tr -d ' ')
+            echo "$label: $count rows"
+            if [ "$count" -eq 0 ]; then
+              echo "FAIL: $label is empty"
+              fail=1
+            fi
+          }
+
+          check "project"                  "SELECT COUNT(*) FROM issue_tracker.project;"
+          check "path_node"                "SELECT COUNT(*) FROM issue_tracker.path_node;"
+          check "path_closure"             "SELECT COUNT(*) FROM issue_tracker.path_closure;"
+          check "changelist"               "SELECT COUNT(*) FROM issue_tracker.changelist;"
+          check "issue_instance"           "SELECT COUNT(*) FROM issue_tracker.issue_instance;"
+          check "issue_observation"        "SELECT COUNT(*) FROM issue_tracker.issue_observation;"
+          check "issue_presence_interval"  "SELECT COUNT(*) FROM issue_tracker.issue_presence_interval;"
+          check "changelist_metrics"       "SELECT COUNT(*) FROM issue_tracker.changelist_metrics;"
+
+          # Validate the BI view resolves without error
+          psql $PG_DSN -c "SELECT COUNT(*) FROM issue_tracker.v_treemap_cl_levels8_latest;" > /dev/null \
+            && echo "v_treemap_cl_levels8_latest: OK" \
+            || { echo "FAIL: BI view query failed"; fail=1; }
+
+          exit $fail
