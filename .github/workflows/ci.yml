@@ -76,7 +76,13 @@ jobs:
             local label="$1"
             local query="$2"
             local count
-            count=$(psql $PG_DSN -t -c "$query" | tr -d ' ')
+            count=$(psql "$PG_DSN" -t -c "$query" | tr -d ' \n')
+            local psql_rc="${PIPESTATUS[0]}"
+            if [ "$psql_rc" -ne 0 ] || [ -z "$count" ]; then
+              echo "FAIL: $label — query error or table missing"
+              fail=1
+              return
+            fi
             echo "$label: $count rows"
             if [ "$count" -eq 0 ]; then
               echo "FAIL: $label is empty"

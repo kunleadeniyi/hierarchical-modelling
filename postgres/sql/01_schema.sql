@@ -227,7 +227,7 @@ CREATE INDEX IF NOT EXISTS ix_issue_interval_end   ON issue_presence_interval(en
 -- ----------------------------
 
 CREATE TABLE IF NOT EXISTS changelist_metrics (
-  project_id       BIGINT NOT NULL REFERENCES project(project_id) ON DELETE CASCADE,
+  project_id       VARCHAR NOT NULL REFERENCES project(project_id) ON DELETE CASCADE,
   changelist_id    BIGINT NOT NULL REFERENCES changelist(changelist_id) ON DELETE CASCADE,
 
   total_issues     INTEGER NOT NULL CHECK (total_issues >= 0),

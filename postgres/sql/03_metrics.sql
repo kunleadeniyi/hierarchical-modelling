@@ -2,7 +2,6 @@
 SET search_path = issue_tracker;
 
 -- Rebuild (idempotent) metrics per changelist for all projects.
--- Replace 'proj-alpha' with a specific project_id to scope to one project.
 WITH ordered AS (
   SELECT
     changelist_id,
@@ -10,7 +9,6 @@ WITH ordered AS (
     cl_number,
     LAG(changelist_id) OVER (PARTITION BY project_id ORDER BY cl_number) AS prev_changelist_id
   FROM changelist
-  WHERE project_id = 'proj-alpha'
 ),
 totals AS (
   SELECT
@@ -18,7 +16,6 @@ totals AS (
     COUNT(DISTINCT io.issue_instance_id)::int AS total_issues
   FROM snapshot s
   JOIN issue_observation io ON io.snapshot_id = s.snapshot_id
-  WHERE s.project_id = 'proj-alpha'
   GROUP BY s.changelist_id
 ),
 news AS (
@@ -26,7 +23,6 @@ news AS (
     start_changelist_id AS changelist_id,
     COUNT(*)::int AS new_issues
   FROM issue_presence_interval
-  WHERE project_id = 'proj-alpha'
   GROUP BY start_changelist_id
 ),
 resolved AS (
