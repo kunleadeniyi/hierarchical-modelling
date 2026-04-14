@@ -1,6 +1,6 @@
--- setting default schema
-show search_path;
-set search_path = issue_tracker;
+-- Create and activate the schema
+CREATE SCHEMA IF NOT EXISTS issue_tracker;
+SET search_path = issue_tracker;
 
 -- ============================================================
 -- Issue Tracker DevOps - Postgres schema (recommended tables)
